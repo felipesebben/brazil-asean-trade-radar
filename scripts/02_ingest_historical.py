@@ -4,7 +4,7 @@ import os
 class HistoricalIngestor:
     """
     A class to handle the bulk ingestion of yearly Comex Stat export data.
-    Combines muyltiple yearly CSVs into a single, optimized Parquet fact table.
+    Combines multiple yearly CSVs into a single, optimized Parquet fact table.
     """
 
     def __init__(self, raw_exports_dir: str = "data/raw/exports", silver_dir: str = "data/silver"):
