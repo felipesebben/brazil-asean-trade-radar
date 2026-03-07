@@ -26,4 +26,4 @@ venv.bak/
 
 # Project Specific Data
 data/
-!data/.gitkeep
+!data/**/.gitkeep
