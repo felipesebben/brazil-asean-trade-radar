@@ -36,13 +36,13 @@ class GoldLayerBuilder:
                     SELECT
                         f.co_ano,
                         f.co_mes,
-                        f.co_ncm,
-                        f.co_pais,
+                        LPAD(CAST(f.co_ncm AS VARCHAR), 8, '0') AS co_ncm,
+                        LPAD(CAST(f.co_pais AS VARCHAR), 3, '0') AS co_pais,
                         f.vl_fob,
                         f.kg_liquido
                     FROM '{self.silver_dir}/fact_exports.parquet' AS f
                     INNER JOIN '{self.silver_dir}/dim_pais_bloco.parquet' AS b
-                        ON f.co_pais = b.co_pais
+                        ON LPAD(CAST(f.co_pais AS VARCHAR), 3, '0') = LPAD(CAST(b.co_pais AS VARCHAR), 3, '0')
                     WHERE b.co_bloco = '{self.target_block_code}'
                 ),
                 aggregated_monthly AS(
@@ -51,13 +51,13 @@ class GoldLayerBuilder:
                         CAST(ff.co_ano AS INTEGER) AS year, 
                         CAST(ff.co_mes AS INTEGER) AS month,
                         ff.co_pais,
-                        dim_ncm.co_sh6,
+                        LPAD(CAST(dim_ncm.co_sh6 AS VARCHAR), 6, '0') AS co_sh6,
                         SUM(ff.vl_fob) AS total_value_usd,
                         SUM(ff.kg_liquido) AS total_weight_kg,
                         SUM(ff.kg_liquido)/1000.0 AS total_weight_ton
                     FROM filtered_facts ff
                     LEFT JOIN '{self.silver_dir}/dim_ncm.parquet' AS dim_ncm
-                        ON ff.co_ncm = dim_ncm.co_ncm
+                        ON LPAD(CAST(ff.co_ncm AS VARCHAR), 8, '0') = LPAD(CAST(dim_ncm.co_ncm AS VARCHAR), 8, '0')
                     GROUP BY 1, 2, 3, 4
                 ),
                 cy_py_joined AS (
@@ -68,6 +68,7 @@ class GoldLayerBuilder:
                         COALESCE(cy.month, py.month) AS month,
                         COALESCE(cy.co_pais, py.co_pais) AS co_pais,
                         COALESCE(cy.co_sh6, py.co_sh6) AS co_sh6,
+
 
                         -- Current Year Metrics (If null, no exports in this year)
                         COALESCE(cy.total_value_usd, 0) AS cy_value_usd,
@@ -90,23 +91,27 @@ class GoldLayerBuilder:
                     make_date(j.year, j.month, 1) AS date,
                     j.co_pais,
                     p.no_pais_ing AS country_name,
-                    sh.co_sh2,
+                    LPAD(CAST(sh.co_sh2 AS VARCHAR), 2, '0') AS co_sh2,
                     sh.no_sh2_ing AS sh2_description,
-                    sh.co_sh4,
+                    LPAD(CAST(sh.co_sh4 AS VARCHAR), 4, '0') AS co_sh4,
                     sh.no_sh4_ing AS sh4_description,
                     j.co_sh6,
                     sh.no_sh6_ing AS sh6_description,
+
                     j.cy_value_usd,
                     j.py_value_usd,
                     j.cy_weight_kg,
                     j.py_weight_kg,
                     j.cy_weight_ton,
-                    j.py_weight_ton
+                    j.py_weight_ton,
+
+                    -- Add timestamp
+                    strftime(CURRENT_TIMESTAMP, '%d/%m/%Y %H:%M') AS last_refresh_date
                 FROM cy_py_joined j
                 LEFT JOIN '{self.silver_dir}/dim_pais.parquet' AS p
-                    ON j.co_pais = p.co_pais
+                    ON j.co_pais = LPAD(CAST(p.co_pais AS VARCHAR), 3, '0')
                 LEFT JOIN '{self.silver_dir}/dim_ncm_sh.parquet' AS sh
-                    ON j.co_sh6 = sh.co_sh6
+                    ON j.co_sh6 = LPAD(CAST(sh.co_sh6 AS VARCHAR), 6, '0')
                 WHERE j.year >= 2019
                 ORDER BY date DESC, j.cy_value_usd DESC
                 ) TO '{output_csv}' (HEADER, DELIMITER ',');
