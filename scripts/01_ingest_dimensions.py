@@ -23,6 +23,22 @@ class DimensionIngestor:
         self.con = duckdb.connect()
         print(f"Initialized DimensionIngestor. Output targeting: {self.silver_dir}/")
 
+    def _ensure_utf8(self, filepath: str) -> str:
+        """
+        Returns a UTF-8 readable path. If the file is not valid UTF-8,
+        re-encodes from latin-1 into a temporary copy and returns that path.
+        """
+        with open(filepath, "rb") as f:
+            raw = f.read()
+        try:
+            raw.decode("utf-8")
+            return filepath
+        except UnicodeDecodeError:
+            utf8_path = filepath + ".utf8.tmp"
+            with open(utf8_path, "wb") as out:
+                out.write(raw.decode("latin-1").encode("utf-8"))
+            return utf8_path
+
     def process_file(self, raw_filename: str, parquet_filename: str):
         """
         Reads a single raw CSV, normalize headers, and saves it as a Parquet file.
@@ -40,14 +56,18 @@ class DimensionIngestor:
         
         print(f"Processing {raw_filename}...")
 
+        csv_path = self._ensure_utf8(input_path)
+
         # DuckDB Query
         query = f"""
             COPY (
                 SELECT * FROM read_csv(
-                    '{input_path}',
+                    '{csv_path}',
                     delim=';',
                     header=True,
-                    normalize_names=True
+                    normalize_names=True,
+                    all_varchar=true,
+                    strict_mode=False
                 )
             ) TO '{output_path}' (FORMAT PARQUET);
         """
@@ -57,6 +77,9 @@ class DimensionIngestor:
             print(f"Saved to {output_path}")
         except Exception as e:
             print(f"Failed to process {raw_filename}: {e}")
+        finally:
+            if csv_path != input_path and os.path.exists(csv_path):
+                os.remove(csv_path)
 
     def run_all(self):
         """
@@ -68,7 +91,6 @@ class DimensionIngestor:
         dimension_map = {
             "NCM.csv": "dim_ncm.parquet",
             "NCM_SH.csv": "dim_ncm_sh.parquet",
-            "ISIC_CUCI.csv": "dim_isic_cuci.parquet",
             "PAIS.csv": "dim_pais.parquet",
             "PAIS_BLOCO.csv": "dim_pais_bloco.parquet"
         }
